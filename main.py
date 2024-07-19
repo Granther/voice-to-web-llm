@@ -1,23 +1,56 @@
 import os
 from dotenv import load_dotenv
+import argparse
 from langchain_community.tools.tavily_search import TavilySearchResults
-from whisper import transcribe
 from sound import get_sound
+from groq import Groq
 
-def search_tav(query):
+def parse_arguments():
+    parser = argparse.ArgumentParser(prog="Voice to Search")
+    parser.add_argument("seconds", type=int, default=5, help="Duration of recording to be transcribed")
+    return parser.parse_args()
+
+def search_tavily(query):
     search = TavilySearchResults(max_results=2)
-    search_results = search.invoke("query")
-
+    search_results = search.invoke(query)
     return search_results
 
-if __name__ == "__main__":
+def transcribe():
+    FILENAME = "recording.wav"
+
+    if not os.path.isfile(FILENAME):
+        raise FileNotFoundError(f"File: {FILENAME} does not exist")
+
+    client = Groq()
+    try:
+        with open(FILENAME, "rb") as file:
+            trans = client.audio.transcriptions.create(
+                file=(FILENAME, file.read()),
+                model="whisper-large-v3",
+                language="en"
+            )
+        
+            return trans.text
+    except Exception as e:
+        print(f"Error occured while transcribing text from file: {e}")
+        return None
+
+def main():
     load_dotenv()
-    os.environ["TAVILY_API_KEY"] = os.getenv("TAVILY_API_KEY")
+    tavily_key = os.getenv("TAVILY_API_KEY")
+    groq_key = os.getenv("GROQ_API_KEY")
+
+    if not tavily_key or not groq_key:
+        raise EnvironmentError("TAVILY_API_KEY and GROQ_API_KEY must be set in .env")
+    
+    os.environ["TAVILY_API_KEY"] = tavily_key
+    os.environ["GROQ_API_KEY"] = groq_key 
 
     get_sound()
-    text = transcribe()
-    print(text)
-    print(search_tav(text))
+    transcibed_text = transcribe()
+    search_results = search_tavily(transcibed_text)
+    print(search_results)
 
-
-#tools = [search]
+if __name__ == "__main__":
+    args = parse_arguments()
+    main()
